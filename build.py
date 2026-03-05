@@ -4,6 +4,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+# 强制使用 UTF-8 编码输出，解决 Windows 下打印中文报错的问题
+if sys.platform.startswith('win'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
 def build():
     # 配置
     project_root = Path(__file__).parent.absolute()
