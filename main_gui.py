@@ -272,10 +272,13 @@ class App:
         ttk.Label(frame_links, text="QQ群见文档底部").pack(side="left", expand=True)
 
     def log(self, message):
-        self.text_log.config(state="normal")
-        self.text_log.insert("end", f"[{time.strftime('%H:%M:%S')}] {message}\n")
-        self.text_log.see("end")
-        self.text_log.config(state="disabled")
+        ts = time.strftime('%H:%M:%S')
+        def _update():
+            self.text_log.config(state="normal")
+            self.text_log.insert("end", f"[{ts}] {message}\n")
+            self.text_log.see("end")
+            self.text_log.config(state="disabled")
+        self.root.after(0, _update)
 
     def refresh_ports(self):
         ports = serial.tools.list_ports.comports()
@@ -386,6 +389,7 @@ class App:
             try:
                 data, addr = self.udp_socket.recvfrom(4096)
                 decoded_data = data.decode("utf-8", errors="ignore").strip()
+                self.log(f"收到UDP消息 {addr}: {decoded_data}")
                 
                 # 处理 TCode 指令
                 if decoded_data.startswith('L') or decoded_data.startswith('R'): # 简单的 TCode 判断
