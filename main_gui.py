@@ -175,6 +175,9 @@ class App:
         
         self.mqtt_client = None
 
+        self.last_udp_recv_log_time = 0
+        self.last_udp_send_log_time = 0
+
         self.setup_ui()
         self.refresh_ports()
 
@@ -389,7 +392,11 @@ class App:
             try:
                 data, addr = self.udp_socket.recvfrom(4096)
                 decoded_data = data.decode("utf-8", errors="ignore").strip()
-                self.log(f"收到UDP消息 {addr}: {decoded_data}")
+                
+                current_time = time.time()
+                if current_time - self.last_udp_recv_log_time >= 1.0:
+                    self.log(f"收到UDP消息 {addr}: {decoded_data}")
+                    self.last_udp_recv_log_time = current_time
                 
                 # 处理 TCode 指令
                 if decoded_data.startswith('L') or decoded_data.startswith('R'): # 简单的 TCode 判断
@@ -398,7 +405,9 @@ class App:
                     
                     if self.serial_conn and self.serial_conn.is_open:
                         self.serial_conn.write(processed_cmd.encode('utf-8'))
-                        # self.log(f"发送: {processed_cmd.strip()}") # 频繁发送可注释掉日志
+                        if current_time - self.last_udp_send_log_time >= 1.0:
+                            self.log(f"发送: {processed_cmd.strip()}") # 频繁发送可注释掉日志
+                            self.last_udp_send_log_time = current_time
                 
                 # 处理设备查询命令 (参考 udp_server.py)
                 elif decoded_data.startswith('D'):
