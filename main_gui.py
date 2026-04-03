@@ -42,8 +42,8 @@ axis_registry = {}
 
 def process_tcode(command_line, scale):
     """解析 TCode 并应用自适应缩放"""
-    # 匹配轴标识(如L0), 4位数值(如4787), 时间参数(如I10)
-    pattern = r'([A-Z][0-9])(\d{4})(I\d+)'
+    # 匹配轴标识(如L0), 4位数值(如4787), 时间参数可选(如I10)
+    pattern = r'([A-Z][0-9])(\d{4})(I\d+)?'
     matches = re.findall(pattern, command_line)
     
     if not matches:
