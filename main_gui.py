@@ -12,36 +12,49 @@ import paho.mqtt.client as mqtt
 
 # ================= 核心逻辑：轴范围自适应与缓和 =================
 class AxisTracker:
-    """用于追踪单个轴的动态范围和计算"""
+    """用于追踪单个轴的动态范围并执行缩放"""
     def __init__(self, name):
         self.name = name
         self.min_val = 9999  # 初始设为最大
         self.max_val = 0     # 初始设为最小
         self.has_data = False
 
-    def update_and_scale(self, current_val, scale):
-        # 1. 更新观察到的实际边界
+    def update_range(self, current_val):
         if current_val < self.min_val: self.min_val = current_val
         if current_val > self.max_val: self.max_val = current_val
         self.has_data = True
 
-        # 2. 计算当前的动态中点
+    def scale_by_ratio(self, current_val, scale):
         dynamic_midpoint = (self.max_val + self.min_val) / 2
-        
-        # 3. 执行缩放算法：
-        # 新值 = 动态中点 + (原始值 - 动态中点) * 缩放比例
-        offset = current_val - dynamic_midpoint
-        scaled_val = int(dynamic_midpoint + (offset * scale))
+        scaled_val = int(dynamic_midpoint + (current_val - dynamic_midpoint) * scale)
+        return max(0, min(9999, scaled_val))
 
-        # 4. 安全边界检查 (0-9999)
-        scaled_val = max(0, min(9999, scaled_val))
-        return scaled_val
+    def scale_by_extreme(self, current_val, scale):
+        dynamic_midpoint = (self.max_val + self.min_val) / 2
+
+        scaled_lower_limit = dynamic_midpoint - (dynamic_midpoint - self.min_val) * scale
+        scaled_upper_limit = dynamic_midpoint + (self.max_val - dynamic_midpoint) * scale
+
+        if current_val < scaled_lower_limit:
+            scaled_val = int(scaled_lower_limit)
+        elif current_val > scaled_upper_limit:
+            scaled_val = int(scaled_upper_limit)
+        else:
+            scaled_val = current_val
+
+        return max(0, min(9999, scaled_val))
+
+    def update_and_scale(self, current_val, scale, mode):
+        self.update_range(current_val)
+        if mode == "比例":
+            return self.scale_by_ratio(current_val, scale)
+        return self.scale_by_extreme(current_val, scale)
 
 # 全局存储所有轴的状态
 axis_registry = {}
 
-def process_tcode(command_line, scale):
-    """解析 TCode 并应用自适应缩放"""
+def process_tcode(command_line, scale, mode):
+    """解析 TCode 并按所选缩放模式处理"""
     # 匹配轴标识(如L0), 4位数值(如4787), 时间参数可选(如I10)
     pattern = r'([A-Z][0-9])(\d{4})(I\d+)?'
     matches = re.findall(pattern, command_line)
@@ -60,7 +73,7 @@ def process_tcode(command_line, scale):
         tracker = axis_registry[axis_id]
         
         # 获取缩放后的值
-        new_val = tracker.update_and_scale(current_val, scale)
+        new_val = tracker.update_and_scale(current_val, scale, mode)
         
         results.append(f"{axis_id}{new_val:04d}{interval}")
 
@@ -235,6 +248,17 @@ class App:
         self.scale_slider.pack(side="left", padx=10)
         self.label_scale_val = ttk.Label(frame_scale, text="0.5")
         self.label_scale_val.pack(side="left")
+
+        ttk.Label(frame_scale, text="缩放模式:").pack(side="left", padx=(10, 0))
+        self.scale_mode_var = tk.StringVar(value="极值")
+        self.combo_scale_mode = ttk.Combobox(
+            frame_scale,
+            width=6,
+            textvariable=self.scale_mode_var,
+            values=["比例", "极值"],
+            state="readonly"
+        )
+        self.combo_scale_mode.pack(side="left", padx=5)
         
         # 更新显示的数值
         self.scale_var.trace_add("write", lambda *args: self.label_scale_val.config(text=f"{self.scale_var.get():.2f}"))
@@ -401,7 +425,8 @@ class App:
                 # 处理 TCode 指令
                 if decoded_data.startswith('L') or decoded_data.startswith('R'): # 简单的 TCode 判断
                     scale = self.scale_var.get()
-                    processed_cmd = process_tcode(decoded_data, scale)
+                    mode = self.scale_mode_var.get()
+                    processed_cmd = process_tcode(decoded_data, scale, mode)
                     
                     if self.serial_conn and self.serial_conn.is_open:
                         self.serial_conn.write(processed_cmd.encode('utf-8'))
